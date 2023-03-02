@@ -1,0 +1,483 @@
+---
+title: "**BCO6008 - ASSESSMENT 3**"
+author: '***Mungunchimeg Batbayar (s4662982)*** '
+date: "2022-11-10"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+**Loading libraries:**
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(skimr)
+library(rsample)
+library(knitr)
+library(ggplot2)
+library(dplyr)
+library(janitor)
+library(forcats)
+library(reshape2)
+library(heatmaply)
+library(gridExtra)
+library(themis)
+library(stringr)
+library(tm)
+library(caret)
+library(party)
+library(e1071)
+library(randomForest)
+```
+
+**Importing data:**
+```{r}
+data <- read_csv("garments_worker_productivity.csv")
+```
+
+
+# **DATA WRANGLING**
+
+Let's see the data set.
+
+```{r}
+head(data)
+```
+
+```{r}
+data%>%skim()
+```
+
+Targeted and Actual productivity variables are the most significant because we will create the outcome variable from the difference between those 2 variables.
+
+
+
+```{r}
+summary(data$targeted_productivity)
+```
+
+
+```{r}
+summary(data$actual_productivity)
+```
+
+
+Data cleaning:
+
+Firstly, cleaning the names of data.
+
+```{r}
+data = data%>%clean_names()
+```
+
+Secondly, generating a new variable named variance that is the variance between target and actual productivity.
+
+```{r}
+data1<-data%>% mutate(variance=(actual_productivity-targeted_productivity))
+```
+
+Additionally, we created a new characteristic variable based on variance.
+if the variance is higher than 0 that means the team reached the targeted productivity. On contrary, less then 0 means the team did not reach the target. 
+
+```{r}
+data2<-data1%>% mutate(achieved=case_when((actual_productivity-targeted_productivity) > 0 ~ 'yes', T ~ 'no' ))
+ 
+```
+
+As can seen be, most of them reached the targeted productivity of around 73% and the rest of them did not reach the goal. 
+
+```{r}
+data2%>%count(achieved)%>%kable()
+```
+
+Let's peek at brief summary of the data set.
+```{r}
+data2%>%summary()
+```
+
+
+We can see that there are 506 missing values in 'wip' variable. 
+
+```{r}
+data2%>%skim()
+```
+
+To improve the predictive analysis, we replaced the missing value with the mean value.
+
+```{r}
+mean_wip<-mean(data2$wip, na.rm=TRUE)
+print(mean_wip)
+```
+
+```{r}
+data2[is.na(data2$wip), "wip"] <- mean_wip
+print(data2)
+data2%>%skim()
+```
+
+
+
+
+# **DATA VISUALIZATION:**
+
+We made the plots with all variables to seek a relationship with productivity.
+According to the result, the 'smv', 'wip', 'incentive', 'idle_men' and 'no_of_style_change' variables were the most positive relationship with the achievement of productivity.
+
+```{r}
+pv1<- data2 %>% ggplot()+geom_boxplot(aes(smv, fill = achieved))
+pv2<- data2 %>% ggplot()+geom_boxplot(aes(wip, fill = achieved))+scale_x_log10()
+pv3<- data2 %>% ggplot()+geom_boxplot(aes(incentive, fill = achieved)) +scale_x_log10()
+pv4<- data2 %>% ggplot()+geom_boxplot(aes(idle_men, fill = achieved)) +scale_x_log10()
+
+
+grid.arrange(pv1,pv2,pv3,pv4, nrow=2)
+```
+
+
+```{r}
+data2 %>%
+  ggplot(aes(achieved, smv)) +
+  geom_boxplot( fill = 'pink') +
+  theme_bw() +
+  coord_flip() +
+  labs(x = '', y = "smv",  
+       title = 'Relationship between achieved and smv')
+```
+
+
+
+```{r}
+data2 %>%
+  ggplot(aes(achieved, incentive)) +
+  geom_boxplot( fill = 'light green') +
+  scale_y_log10()+
+  theme_bw() +
+  coord_flip() +
+  labs(x = '', y = "incentive",  
+       title = 'Relationship between achieved and incentive')
+```
+
+SMV:
+```{r}
+data2 %>%
+  ggplot(aes(variance, -smv)) +
+  geom_point() +
+  geom_smooth(method = lm, se = FALSE) +
+  theme_bw() +
+  labs(x = 'variance', y = "smv",  
+       title = 'Relationship between variance and smv')
+```
+
+
+WIP:
+```{r}
+data2 %>%
+  ggplot(aes(variance, wip)) +
+  geom_point() +
+  scale_y_log10()+
+  geom_smooth(method = lm, se = FALSE) +
+  theme_bw() +
+  labs(x = 'variance', y = "wip",  
+       title = 'Relationship between variance and wip')
+```
+
+
+
+OVER_TIME:
+```{r}
+data2 %>%
+  ggplot(aes(variance, over_time)) +
+  geom_point() +
+  scale_y_log10()+
+  geom_smooth(method = lm, se = FALSE) +
+  theme_bw() +
+  labs(x = 'variance', y = "over_time",  
+       title = 'Relationship between variance and overtime')
+```
+
+
+
+
+INCENTIVE:
+```{r}
+data2 %>%
+  ggplot(aes(variance, incentive)) +
+  geom_point() +
+  scale_y_log10()+
+  geom_smooth(method = lm, se = FALSE) +
+  theme_bw() +
+  labs(x = 'variance', y = "incentive",  
+       title = 'Relationship between variance and incentive')
+```
+
+
+
+IDLE_TIME:
+```{r}
+data2 %>%
+  ggplot(aes(variance, idle_time)) +
+  geom_point() +
+  geom_smooth(method = lm, se = FALSE) +
+  theme_bw() +
+  labs(x = 'variance', y = "idle_time",  
+       title = 'Relationship between variance and idle time')
+```
+
+IDLE_MEN:
+```{r}
+data2 %>%
+  ggplot(aes(variance, -idle_men)) +
+  geom_point() +
+  geom_smooth(method = lm, se = FALSE) +
+  theme_bw() +
+  labs(x = 'variance', y = "idle_men",  
+       title = 'Relationship between variance and idle men')
+```
+
+NO_OF_STYLE_CHANGE:
+```{r}
+data2 %>%
+  ggplot(aes(variance, -no_of_style_change)) +
+  geom_point() +
+  geom_smooth(method = lm, se = FALSE) +
+  theme_bw() +
+  labs(x = 'variance', y = "style changes",  
+       title = 'Relationship between variance and number of style change')
+```
+
+
+```{r}
+data2%>% group_by(achieved)%>%count(no_of_style_change)%>%ungroup()
+```
+
+NO_OF_WORKERS:
+```{r}
+data2 %>%
+  ggplot(aes(variance, -no_of_workers)) +
+  geom_point() +
+  geom_smooth(method = lm, se = FALSE) +
+  theme_bw() +
+  labs(x = 'variance', y = "number of workers",  
+       title = 'Relationship between variance and number of workers')
+```
+
+
+```{r}
+data2 %>%
+  ggplot(aes(targeted_productivity, actual_productivity)) +
+  geom_point() +
+  geom_smooth(method = lm, se = FALSE) +
+  theme_bw() +
+  labs(x = 'target', y = "actual",  
+       title = 'Relationship between target and actual productivity', caption = 'Figure 3')
+```
+
+Let's check the distribution of the variance
+
+```{r}
+data2 %>%
+  ggplot(aes(variance)) +
+  geom_histogram(bins = 30, color = "red") +
+  labs(x = "price", y = " ", 
+       title = "Distribution of the variance", caption = "Figure 5")
+```
+
+
+Some unnecessary variables named date, quarter, day, the number of teams, department and variance were removed from data that won't be used in the data modelling.
+
+```{r}
+dat <- data2%>%
+  select(-date, -quarter, -day, -team, -department, -variance)%>%
+  mutate_if(is.character, as.factor)
+
+glimpse(dat)
+```
+
+
+# **DATA MODELLING**
+
+## **Model 1: Prediction modelling using all predictors:**
+
+The mean accuracy of model 1 shows 28.7% of Naïve Bayes and 53.3% of Random Forest. 
+
+```{r}
+bayesAcc = c();
+randomAcc = c();
+```
+
+```{r}
+for(i in 1:100){
+  ind = sample(2, nrow(dat),replace = T, prob = c(0.75,0.25))
+  table(ind)
+  train_data = dat[ind == 1, ]
+  test_data = dat[ind == 2, ]
+  print(dim(train_data))
+  print(dim(test_data))
+  
+  # Naive Bayes  model using train data
+  dat_bayes = naiveBayes(train_data$achieved ~., data = train_data)
+  print("Results of Naive Bayes classifier")
+  # Evaluate the model using test data
+  testPrediction = predict(dat_bayes, test_data)
+  conf = table(test_data$achieved , testPrediction)
+  cm = confusionMatrix(test_data$achieved , testPrediction)
+  bayesAcc[i] = mean(cm$byClass[])
+  print(bayesAcc[i])
+
+  # Random Forest model using the train data
+  dat_random = randomForest(train_data$achieved  ~., data = train_data)
+  # Evaluate the model using test data
+  testPrediction = predict(dat_random, test_data)
+  conf = table(test_data$achieved , testPrediction)
+  cm = confusionMatrix(test_data$achieved , testPrediction)
+  print("Results of Random Forest  classifier")
+  randomAcc[i] = mean(cm$byClass[])
+  print(randomAcc[i])
+}
+```
+
+
+
+
+```{r}
+plot(randomAcc, type="b",ylim=c(0,1),col="blue",pch=19)
+lines(bayesAcc,type="b",col="red",pch=18)
+
+
+legend("bottomright",legend=c("Random","Bayes"),col=c("blue","red"),pch=c(19,18),lty=1:2)
+
+```
+  
+  
+```{r}
+ttest = t.test(randomAcc, bayesAcc)
+print(ttest)
+print(mean(bayesAcc))
+print(mean(randomAcc))
+```
+
+
+
+## **Model 2: Prediction model using smv + wip + incentive + idle_men + no_of_style_change:**
+
+The mean accuracy of model 2 presents 40.7% of Naïve Bayes and 58.0% of Random Forest. The second model presents the highest accuracy because only five selected variables with a better relationship with productivity.
+
+
+```{r}
+bayesAcc1= c();
+randomAcc1 = c();
+```
+
+```{r}
+for(i in 1:100){
+  ind = sample(2, nrow(dat),replace = T, prob = c(0.75,0.25))
+  table(ind)
+  train_data = dat[ind == 1, ]
+  test_data = dat[ind == 2, ]
+  print(dim(train_data))
+  print(dim(test_data))
+  
+  # Naive Bayes  model using train data
+  dat_bayes = naiveBayes(train_data$achieved ~  smv + wip + incentive + idle_men +   no_of_style_change, data = train_data)
+  print("Results of Naive Bayes classifier")
+  # Evaluate the model using test data
+  testPrediction = predict(dat_bayes, test_data)
+  conf = table(test_data$achieved , testPrediction)
+  cm = confusionMatrix(test_data$achieved , testPrediction)
+  bayesAcc1[i] = mean(cm$byClass[])
+  print(bayesAcc1[i])
+
+  # Random Forest model using the train data
+  dat_random = randomForest(train_data$achieved  ~ smv + wip + incentive + idle_men + no_of_style_change, data = train_data)
+  # Evaluate the model using test data
+  testPrediction = predict(dat_random, test_data)
+  conf = table(test_data$achieved , testPrediction)
+  cm = confusionMatrix(test_data$achieved , testPrediction)
+  print("Results of Random Forest  classifier")
+  randomAcc1[i] = mean(cm$byClass[])
+  print(randomAcc1[i])
+}
+```
+
+
+
+```{r}
+plot(randomAcc1, type="b",ylim=c(0,1),col="blue",pch=19)
+lines(bayesAcc1,type="b",col="red",pch=18)
+
+
+legend("bottomright",legend=c("Random","Bayes"),col=c("blue","red"),pch=c(19,18),lty=1:2)
+
+```
+
+  
+```{r}
+ttest = t.test(randomAcc1, bayesAcc1)
+print(ttest)
+print(mean(bayesAcc1))
+print(mean(randomAcc1))
+```
+
+
+## **Model 3: Prediction model with smv + incentive + idle_men**
+
+The mean accuracy of model 3 displays 31.5% of Naïve Bayes and 50.2% of Random Forest. 
+
+```{r}
+bayesAcc2= c();
+randomAcc2 = c();
+```
+
+```{r}
+for(i in 1:100){
+  ind = sample(2, nrow(dat),replace = T, prob = c(0.75,0.25))
+  table(ind)
+  train_data = dat[ind == 1, ]
+  test_data = dat[ind == 2, ]
+  print(dim(train_data))
+  print(dim(test_data))
+  
+  # Naive Bayes  model using train data
+  dat_bayes = naiveBayes(train_data$achieved ~  smv + incentive + idle_men, data = train_data)
+  print("Results of Naive Bayes classifier")
+  # Evaluate the model using test data
+  testPrediction = predict(dat_bayes, test_data)
+  conf = table(test_data$achieved , testPrediction)
+  cm = confusionMatrix(test_data$achieved , testPrediction)
+  bayesAcc2[i] = mean(cm$byClass[])
+  print(bayesAcc2[i])
+
+  # Random Forest model using the train data
+  dat_random = randomForest(train_data$achieved  ~ smv + incentive + idle_men, data = train_data)
+  # Evaluate the model using test data
+  testPrediction = predict(dat_random, test_data)
+  conf = table(test_data$achieved , testPrediction)
+  cm = confusionMatrix(test_data$achieved , testPrediction)
+  print("Results of Random Forest  classifier")
+  randomAcc2[i] = mean(cm$byClass[])
+  print(randomAcc2[i])
+}
+```
+
+
+```{r}
+plot(randomAcc2, type="b",ylim=c(0,1),col="blue",pch=19)
+lines(bayesAcc2,type="b",col="red",pch=18)
+
+
+legend("bottomright",legend=c("Random","Bayes"),col=c("blue","red"),pch=c(19,18),lty=1:2)
+
+```
+
+  
+```{r}
+ttest = t.test(randomAcc2, bayesAcc2)
+print(ttest)
+print(mean(bayesAcc2))
+print(mean(randomAcc2))
+```
